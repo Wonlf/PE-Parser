@@ -13,12 +13,14 @@
 
 IMAGE_DOS_HEADER dosHeader;
 IMAGE_NT_HEADERS ntHeader;
+IMAGE_SECTION_HEADER *SH;
 
 
 
 void bringDosHeader();
 void bringDosStub();
 void bringNTheader();
+void printSectionHeader();
 
 
 
@@ -51,6 +53,13 @@ int main(int argc, char *argv[]){
     fread(&ntHeader, sizeof(IMAGE_NT_HEADERS), 1, fp); //dos_header의 끝부터 IMAGE_NT_HEADERS의 크기만큼 읽기.
     bringDosStub(filename); //nt_header를 불러왔을때 실행해야 PE인지 확인 가능
     bringNTheader();
+
+    SH = (IMAGE_SECTION_HEADER*)malloc(sizeof(IMAGE_SECTION_HEADER) * ntHeader.FileHeader.NumberOfSections); //malloc with number of sections
+    for (int i = 0;i < ntHeader.FileHeader.NumberOfSections;i++)
+    {
+        fread(&SH[i], sizeof(IMAGE_SECTION_HEADER), 1, fp); //IMAGE_SECTION_HEADER
+    }
+    printSectionHeader(); //print IMAGE_SECTION_HEADER[]
 
 
     fclose(fp);
@@ -215,4 +224,19 @@ void bringNTheader(){
     printf("Time Data Stamp: 0x%x = (프로그램의 빌드 시간) : %d초\n", ntHeader.FileHeader.TimeDateStamp, ntHeader.FileHeader.TimeDateStamp); //실행 파일의 빌드 시간
 
     bringOptionalHeader();
+}
+
+void printSectionHeader(){
+    printf("< SECTION HEADER >\n");
+    for (int i = 0;i < ntHeader.FileHeader.NumberOfSections;i++)
+    {
+        printf("| Name: %s\n", SH[i].Name);
+        printf("| Virtual Size: 0x%x\n", SH[i].Misc.VirtualSize);
+        printf("| Virtual Address: 0x%x\n", SH[i].VirtualAddress);
+        printf("| Size of Raw Data: 0x%x\n", SH[i].SizeOfRawData);
+        printf("| Pointer of Raw Data: 0x%x\n", SH[i].PointerToRawData);
+        printf("| Characteristics: 0x%x\n", SH[i].Characteristics);
+        printf("\n");
+    }
+    printf("\n\n");
 }
