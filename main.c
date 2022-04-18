@@ -13,14 +13,14 @@
 
 IMAGE_DOS_HEADER dosHeader;
 IMAGE_NT_HEADERS ntHeader;
-IMAGE_SECTION_HEADER *SH;
+IMAGE_SECTION_HEADER *sectionHeader;
 
 
 
 void bringDosHeader();
 void bringDosStub();
 void bringNTheader();
-void printSectionHeader();
+void bringSectionHeader();
 
 
 
@@ -54,12 +54,12 @@ int main(int argc, char *argv[]){
     bringDosStub(filename); //nt_header를 불러왔을때 실행해야 PE인지 확인 가능
     bringNTheader();
 
-    SH = (IMAGE_SECTION_HEADER*)malloc(sizeof(IMAGE_SECTION_HEADER) * ntHeader.FileHeader.NumberOfSections); //malloc with number of sections
-    for (int i = 0;i < ntHeader.FileHeader.NumberOfSections;i++)
-    {
-        fread(&SH[i], sizeof(IMAGE_SECTION_HEADER), 1, fp); //IMAGE_SECTION_HEADER
+    sectionHeader = malloc(sizeof(IMAGE_SECTION_HEADER) * ntHeader.FileHeader.NumberOfSections); //섹션의 갯수만큼 IMAGE_SECTION_HEADER크기를 동적 할당
+//    IMAGE_SECTION_HEADER *sectionHeader[ntHeader.FileHeader.NumberOfSections]; //포인터 배열도 사용할 수 있는 방안 검토
+    for (int i = 0; i < ntHeader.FileHeader.NumberOfSections; i++){
+        fread(&sectionHeader[i], sizeof(IMAGE_SECTION_HEADER), 1, fp); //IMAGE_SECTION_HEADER크기만큼 읽고 갯수만큼 for문 돌아서 동적할당한 공간에 넣기
     }
-    printSectionHeader(); //print IMAGE_SECTION_HEADER[]
+    bringSectionHeader();
 
 
     fclose(fp);
@@ -226,16 +226,22 @@ void bringNTheader(){
     bringOptionalHeader();
 }
 
-void printSectionHeader(){
-    printf("< SECTION HEADER >\n");
-    for (int i = 0;i < ntHeader.FileHeader.NumberOfSections;i++)
-    {
-        printf("| Name: %s\n", SH[i].Name);
-        printf("| Virtual Size: 0x%x\n", SH[i].Misc.VirtualSize);
-        printf("| Virtual Address: 0x%x\n", SH[i].VirtualAddress);
-        printf("| Size of Raw Data: 0x%x\n", SH[i].SizeOfRawData);
-        printf("| Pointer of Raw Data: 0x%x\n", SH[i].PointerToRawData);
-        printf("| Characteristics: 0x%x\n", SH[i].Characteristics);
+void bringSectionHeader(){
+    printf("이 파일의 Section HEADER 목록 중 주요 멤버\n");
+    for (int i = 0; i < ntHeader.FileHeader.NumberOfSections; i++){
+        printf("[  %s  ] 섹션의 정보\n", sectionHeader[i].Name);
+        printf("Name: %s\n", sectionHeader[i].Name); //섹션의 이름
+        printf("Virtual Size: 0x%x\n", sectionHeader[i].Misc.VirtualSize); //메모리에서 섹션이 차지하는 크기
+        printf("Virtual Address: 0x%x\n", sectionHeader[i].VirtualAddress); //메모리에서 섹션의 시작 주소 (RVA)
+        printf("Size of Raw Data: 0x%x\n", sectionHeader[i].SizeOfRawData); //오프셋(파일)에서 섹션이 차지하는 크기
+        printf("Pointer of Raw Data: 0x%x\n", sectionHeader[i].PointerToRawData); //오프셋(파일)에서 섹션의 시작 위치
+        printf("Characteristics: 0x%x\n", sectionHeader[i].Characteristics); //섹션의 특징 bit OR
+                //#define IMAGE_SCN_CNT_CODE                   0x00000020  // Section contains code.
+                //#define IMAGE_SCN_CNT_INITIALIZED_DATA       0x00000040  // Section contains initialized data.
+                //#define IMAGE_SCN_CNT_UNINITIALIZED_DATA     0x00000080  // Section contains uninitialized data.
+                //#define IMAGE_SCN_MEM_EXECUTE                0x20000000  // Section is executable.
+                //#define IMAGE_SCN_MEM_READ                   0x40000000  // Section is readable.
+                //#define IMAGE_SCN_MEM_WRITE                  0x80000000  // Section is writeable.
         printf("\n");
     }
     printf("\n\n");
