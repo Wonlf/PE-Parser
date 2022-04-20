@@ -10,16 +10,20 @@
 //(struct.word & 0xff00) >> 8 위와 동일한 원리로 앞 8비트만 남기게 해서 출력하는건데, 8만큼 오른쪽으로 비트연산 하는 이유는 뒤에 비트가 0이 남게 되니까 앞자리로 덮어쓰기
 
 
+FILE *fp = NULL;
+
 IMAGE_DOS_HEADER dosHeader;
 IMAGE_NT_HEADERS ntHeader;
-IMAGE_SECTION_HEADER sectionHeader;
-
+IMAGE_SECTION_HEADER *sectionHeader;
+IMAGE_IMPORT_DESCRIPTOR *ID;
 
 
 void bringDosHeader();
 void bringDosStub();
 void bringNTheader();
 void bringSectionHeader();
+DWORD RVAtoRAW(DWORD RVA);
+void printID();
 
 
 
@@ -36,7 +40,6 @@ int main(int argc, char *argv[]){
         printf("입력받은 파일의 경로 : %s\n", filename);
     }
 
-    FILE *fp = NULL;
     fp = fopen(filename, "rb"); //argv[1]를 통해 받는걸로 구현
     if (fp == NULL){
         printf("이 파일은 열 수 없습니다.\n");
@@ -55,14 +58,19 @@ int main(int argc, char *argv[]){
 
 
     printf("이 파일의 Section HEADER 목록 중 주요 멤버\n");
+    sectionHeader = malloc(sizeof(IMAGE_SECTION_HEADER) * ntHeader.FileHeader.NumberOfSections); //섹션의 크기 * 갯수만큼 공간마련
     for (int i = 0; i < ntHeader.FileHeader.NumberOfSections; i++){ //섹션의 갯수만큼 읽고 출력하고 읽고 출력하고 반복
-        fread(&sectionHeader, sizeof(IMAGE_SECTION_HEADER), 1, fp);
-        bringSectionHeader();
+        fread(&sectionHeader[i], sizeof(IMAGE_SECTION_HEADER), 1, fp);
     }
-    //learning IAT
-    //IAT공부 해서 구현
-
-
+    bringSectionHeader();
+    fseek(fp, RVAtoRAW(ntHeader.OptionalHeader.DataDirectory[1].VirtualAddress), SEEK_SET); //find IMAGE_IMPORT_DESCRIPTOR 구조체의 처음부터 읽기
+    ID = (IMAGE_IMPORT_DESCRIPTOR*)malloc(sizeof(IMAGE_IMPORT_DESCRIPTOR) * (ntHeader.OptionalHeader.DataDirectory[1].Size / sizeof(IMAGE_IMPORT_DESCRIPTOR) - 1)); // -1 means last structure is null
+    for (int i = 0; i < ntHeader.OptionalHeader.DataDirectory[1].Size / sizeof(IMAGE_IMPORT_DESCRIPTOR) - 1; i++){
+        fread(&ID[i], sizeof(IMAGE_IMPORT_DESCRIPTOR), 1, fp); //IMAGE_IMPORT_DESCRIPTOR
+    }
+    printID(); //print IMAGE_IMPORT_DESCRIPTOR[]
+    printf("\n");
+    free(filename);
 
 
     fclose(fp);
@@ -232,20 +240,78 @@ void bringNTheader(){
 
 void bringSectionHeader(){
 
-//    for (int i = 0; i < ntHeader.FileHeader.NumberOfSections; i++){
-        printf("[  %s  ] 섹션의 정보\n", sectionHeader.Name);
-        printf("Name: %s\n", sectionHeader.Name); //섹션의 이름
-        printf("Virtual Size: 0x%x\n", sectionHeader.Misc.VirtualSize); //메모리에서 섹션이 차지하는 크기
-        printf("Virtual Address: 0x%x\n", sectionHeader.VirtualAddress); //메모리에서 섹션의 시작 주소 (RVA)
-        printf("Size of Raw Data: 0x%x\n", sectionHeader.SizeOfRawData); //오프셋(파일)에서 섹션이 차지하는 크기
-        printf("Pointer of Raw Data: 0x%x\n", sectionHeader.PointerToRawData); //오프셋(파일)에서 섹션의 시작 위치
-        printf("Characteristics: 0x%x\n", sectionHeader.Characteristics); //섹션의 특징 bit OR
+    for (int i = 0; i < ntHeader.FileHeader.NumberOfSections; i++){
+        printf("[  %s  ] 섹션의 정보\n", sectionHeader[i].Name);
+        printf("Name: %s\n", sectionHeader[i].Name); //섹션의 이름
+        printf("Virtual Size: 0x%x\n", sectionHeader[i].Misc.VirtualSize); //메모리에서 섹션이 차지하는 크기
+        printf("Virtual Address: 0x%x\n", sectionHeader[i].VirtualAddress); //메모리에서 섹션의 시작 주소 (RVA)
+        printf("Size of Raw Data: 0x%x\n", sectionHeader[i].SizeOfRawData); //오프셋(파일)에서 섹션이 차지하는 크기
+        printf("Pointer of Raw Data: 0x%x\n", sectionHeader[i].PointerToRawData); //오프셋(파일)에서 섹션의 시작 위치
+        printf("Characteristics: 0x%x\n", sectionHeader[i].Characteristics); //섹션의 특징 bit OR
                 //#define IMAGE_SCN_CNT_CODE                   0x00000020  // Section contains code.
                 //#define IMAGE_SCN_CNT_INITIALIZED_DATA       0x00000040  // Section contains initialized data.
                 //#define IMAGE_SCN_CNT_UNINITIALIZED_DATA     0x00000080  // Section contains uninitialized data.
                 //#define IMAGE_SCN_MEM_EXECUTE                0x20000000  // Section is executable.
                 //#define IMAGE_SCN_MEM_READ                   0x40000000  // Section is readable.
                 //#define IMAGE_SCN_MEM_WRITE                  0x80000000  // Section is writeable.
-//    }
+    }
     printf("\n");
+}
+
+DWORD RVAtoRAW(DWORD RVA){
+    int i;
+    DWORD raw;
+    for (i = 0;i < ntHeader.FileHeader.NumberOfSections -1;i++){
+        if (RVA >= sectionHeader[i].VirtualAddress && RVA <= sectionHeader[i + 1].VirtualAddress){
+            raw = RVA - sectionHeader[i].VirtualAddress + sectionHeader[i].PointerToRawData;
+        }
+    }
+    return raw;
+}
+void readName(DWORD raw){
+    char* name = (char*)malloc(sizeof(char) * 256);
+    int i=0;
+    fseek(fp, raw, SEEK_SET);
+    do {
+        fread(&name[i], 1, 1, fp);
+        printf("%c", name[i]);
+        i++;
+    } while (name[i-1]!=0x0);
+    printf("\n");
+}
+
+void INTable(DWORD raw){
+    DWORD another=0;
+    int i=0;
+    char* name;
+    fseek(fp, raw, SEEK_SET);
+    do {
+        fread(&another, 4, 1, fp);
+        if (!another) break;
+        fseek(fp, RVAtoRAW(another)+2, SEEK_SET);
+        name = (char*)malloc(sizeof(char) * 256);
+        printf("|\t");
+        do {
+            fread(&name[i], 1, 1, fp);
+            if(name[i]!=0x0) printf("%c", name[i]);
+            i++;
+        } while (name[i-1] != 0x0);
+        printf("\n");
+        free(name);
+        i = 0;
+        raw += 4;
+        fseek(fp, raw, SEEK_SET);
+    } while (another);
+}
+void printID(){
+    printf("< IMPORT DESCRIPTOR >\n|\n");
+    for (int i = 0; i < ntHeader.OptionalHeader.DataDirectory[1].Size / sizeof(IMAGE_IMPORT_DESCRIPTOR) - 1; i++){
+        printf("| Original First Thunk: 0x%x (raw: 0x%x) \n", ID[i].OriginalFirstThunk, RVAtoRAW(ID[i].OriginalFirstThunk));
+        printf("| IMAGE IMPORT BY NAME(INT): ");
+        INTable(RVAtoRAW(ID[i].OriginalFirstThunk));
+        printf("| Name: 0x%x (raw: 0x%x) -> ", ID[i].Name, RVAtoRAW(ID[i].Name));
+        readName(RVAtoRAW(ID[i].Name));
+        printf("| First Thunk: 0x%x (raw: 0x%x)\n\n", ID[i].FirstThunk, RVAtoRAW(ID[i].FirstThunk));
+    }
+    printf("\n\n");
 }

@@ -7,3 +7,4 @@ A program that parses and displays files in PE structures.
     * Created a bring Dos stub function.
     * Created a bring NT header function.
     * Created a bring Section header function.
+    * need code review
